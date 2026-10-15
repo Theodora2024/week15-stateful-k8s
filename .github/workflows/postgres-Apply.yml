@@ -1,0 +1,198 @@
+name: postgres-Apply
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/**"
+      - ".github/workflows/postgres-Apply.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: week15-postgres-eks
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-2
+  EKS_CLUSTER_NAME: eks-infra-prod
+  K8S_NAMESPACE: week15
+
+jobs:
+  deploy-postgres:
+    name: Validate and deploy PostgreSQL to EKS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Optional: create a GitHub Environment named "week15" and add approval rules.
+    environment: week15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required manifests exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            "k8s/namespace.yaml"
+            "k8s/storage/pvc.yaml"
+            "k8s/database/service.yaml"
+            "k8s/database/postgres-statefulset.yaml"
+            "k8s/network/default-deny.yaml"
+            "k8s/network/allow-postgres-client.yaml"
+            "k8s/network/allow-client-egress.yaml"
+            "k8s/network/allow-dns.yaml"
+            "k8s/network/test-client.yaml"
+          )
+          for file in "${files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::Required manifest is missing: $file"
+              exit 1
+            fi
+          done
+          echo "All required manifests are present."
+
+      - name: Configure AWS credentials using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: Week15PostgresGitHubActions
+
+      - name: Verify target EKS cluster exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+          aws eks describe-cluster \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION" \
+            --query 'cluster.{name:name,status:status,version:version}' \
+            --output table
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.36.1"
+
+      - name: Configure kubectl for EKS
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION"
+          kubectl version --client
+          kubectl get nodes
+
+      - name: Validate namespace manifest against the cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply --dry-run=server -f k8s/namespace.yaml
+
+      - name: Apply namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/namespace.yaml
+
+      - name: Create or update database Secret
+        shell: bash
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+            echo "::error::Add POSTGRES_PASSWORD as a GitHub Actions secret."
+            exit 1
+          fi
+          kubectl create secret generic postgres-secret \
+            --namespace "$K8S_NAMESPACE" \
+            --from-literal="POSTGRES_PASSWORD=$POSTGRES_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          unset POSTGRES_PASSWORD
+
+      - name: Validate manifests with server-side dry run
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply --dry-run=server -f k8s/storage/pvc.yaml
+          kubectl apply --dry-run=server -f k8s/database/service.yaml
+          kubectl apply --dry-run=server -f k8s/database/postgres-statefulset.yaml
+          kubectl apply --dry-run=server -f k8s/network/default-deny.yaml
+          kubectl apply --dry-run=server -f k8s/network/allow-postgres-client.yaml
+          kubectl apply --dry-run=server -f k8s/network/allow-client-egress.yaml
+          kubectl apply --dry-run=server -f k8s/network/allow-dns.yaml
+          kubectl apply --dry-run=server -f k8s/network/test-client.yaml
+
+      - name: Apply persistent storage and database
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/storage/pvc.yaml
+          kubectl apply -f k8s/database/service.yaml
+          kubectl apply -f k8s/database/postgres-statefulset.yaml
+
+      - name: Wait for PVC and PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl wait \
+            --for=jsonpath='{.status.phase}'=Bound \
+            pvc/postgres-data \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=180s
+          kubectl rollout status \
+            statefulset/postgres \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=300s
+
+      - name: Apply NetworkPolicies and authorized test client
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/network/default-deny.yaml
+          kubectl apply -f k8s/network/allow-postgres-client.yaml
+          kubectl apply -f k8s/network/allow-client-egress.yaml
+          kubectl apply -f k8s/network/allow-dns.yaml
+          kubectl apply -f k8s/network/test-client.yaml
+          kubectl wait \
+            --for=condition=Ready pod/test-client \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=180s
+
+      - name: Verify PostgreSQL SQL health
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl exec --namespace "$K8S_NAMESPACE" postgres-0 -- \
+            sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql \
+              -h 127.0.0.1 -U healthcare -d healthcare \
+              -v ON_ERROR_STOP=1 -tAc "SELECT 1;"' | grep -qx '1'
+          echo "PostgreSQL SQL health check passed."
+
+      - name: Print deployment summary
+        if: success()
+        shell: bash
+        run: |
+          kubectl get pods,pvc,svc,networkpolicy \
+            --namespace "$K8S_NAMESPACE" -o wide
+          kubectl get statefulset postgres --namespace "$K8S_NAMESPACE"
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          kubectl get pods,pvc,svc,networkpolicy -n "$K8S_NAMESPACE" -o wide
+          kubectl describe statefulset postgres -n "$K8S_NAMESPACE"
+          kubectl describe pod postgres-0 -n "$K8S_NAMESPACE"
+          kubectl logs postgres-0 -n "$K8S_NAMESPACE" --all-containers=true
+          kubectl logs postgres-0 -n "$K8S_NAMESPACE" --all-containers=true --previous
+          kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp
