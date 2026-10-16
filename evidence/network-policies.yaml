@@ -1,0 +1,103 @@
+apiVersion: v1
+items:
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"allow-client-egress","namespace":"week15"},"spec":{"egress":[{"ports":[{"port":5432,"protocol":"TCP"}],"to":[{"podSelector":{"matchLabels":{"app":"postgres"}}}]}],"podSelector":{"matchLabels":{"app":"test-client"}},"policyTypes":["Egress"]}}
+    creationTimestamp: "2026-10-16T11:44:58Z"
+    generation: 1
+    name: allow-client-egress
+    namespace: week15
+    resourceVersion: "224160"
+    uid: 94750c65-c1d7-4259-a1ff-ae488a4e95c0
+  spec:
+    egress:
+    - ports:
+      - port: 5432
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app: postgres
+    podSelector:
+      matchLabels:
+        app: test-client
+    policyTypes:
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"allow-dns","namespace":"week15"},"spec":{"egress":[{"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}],"to":[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}},"podSelector":{"matchLabels":{"k8s-app":"kube-dns"}}}]}],"podSelector":{},"policyTypes":["Egress"]}}
+    creationTimestamp: "2026-10-16T11:44:59Z"
+    generation: 1
+    name: allow-dns
+    namespace: week15
+    resourceVersion: "224167"
+    uid: 4c124a35-55f6-42f7-821a-97b5b4637113
+  spec:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    podSelector: {}
+    policyTypes:
+    - Egress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"allow-postgres-client","namespace":"week15"},"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app":"test-client"}}}],"ports":[{"port":5432,"protocol":"TCP"}]}],"podSelector":{"matchLabels":{"app":"postgres"}},"policyTypes":["Ingress"]}}
+    creationTimestamp: "2026-10-16T11:44:57Z"
+    generation: 1
+    name: allow-postgres-client
+    namespace: week15
+    resourceVersion: "224155"
+    uid: 7fed4894-7a70-493d-87e1-4ef90d49f245
+  spec:
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app: test-client
+      ports:
+      - port: 5432
+        protocol: TCP
+    podSelector:
+      matchLabels:
+        app: postgres
+    policyTypes:
+    - Ingress
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"annotations":{},"name":"default-deny","namespace":"week15"},"spec":{"podSelector":{},"policyTypes":["Ingress","Egress"]}}
+    creationTimestamp: "2026-10-16T11:44:55Z"
+    generation: 1
+    name: default-deny
+    namespace: week15
+    resourceVersion: "224147"
+    uid: c16fa3da-ea2d-4c5d-9936-7884cfe759dc
+  spec:
+    podSelector: {}
+    policyTypes:
+    - Ingress
+    - Egress
+kind: List
+metadata:
+  resourceVersion: ""

@@ -1,0 +1,12 @@
+NAME                        READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/postgres   1/1     10h   postgres     postgres:16
+
+NAME              READY   STATUS    RESTARTS       AGE     IP             NODE                                         NOMINATED NODE   READINESS GATES
+pod/postgres-0    1/1     Running   0              6h17m   10.16.30.100   ip-10-16-16-42.eu-west-2.compute.internal    <none>           <none>
+pod/test-client   1/1     Running   10 (56m ago)   10h     10.16.36.218   ip-10-16-42-253.eu-west-2.compute.internal   <none>           <none>
+
+NAME               TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/postgres   ClusterIP   None         <none>        5432/TCP   10h   app=postgres
+
+NAME                                  STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE
+persistentvolumeclaim/postgres-data   Bound    pvc-31fd856f-af2c-458b-9d00-30de20a4ff8d   2Gi        RWO            gp3            <unset>                 10h   Filesystem

@@ -1,0 +1,4 @@
+LAST SEEN   TYPE     REASON    OBJECT            MESSAGE
+56m         Normal   Created   pod/test-client   Container created
+56m         Normal   Started   pod/test-client   Container started
+56m         Normal   Pulled    pod/test-client   Container image "postgres:16" already present on machine and can be accessed by the pod
