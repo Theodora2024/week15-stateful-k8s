@@ -56,8 +56,18 @@ jobs:
             fi
           done
           echo "All required manifests are present."
-
+      - name: Validate AWS role configuration
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        shell: bash
+        run: |
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "::error::AWS_ROLE_ARN is empty or unavailable to this job."
+            exit 1
+          fi
+          echo "AWS role ARN is configured."
       - name: Configure AWS credentials using GitHub OIDC
+        id: aws-creds
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -187,8 +197,8 @@ jobs:
             --namespace "$K8S_NAMESPACE" -o wide
           kubectl get statefulset postgres --namespace "$K8S_NAMESPACE"
 
-      - name: Collect diagnostics on failure
-        if: failure()
+      - name: Collect failure diagnostics
+        if: ${{ failure() && steps.aws-creds.outcome == 'success' }}
         shell: bash
         run: |
           set +e
@@ -198,3 +208,4 @@ jobs:
           kubectl logs postgres-0 -n "$K8S_NAMESPACE" --all-containers=true
           kubectl logs postgres-0 -n "$K8S_NAMESPACE" --all-containers=true --previous
           kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp
+  
