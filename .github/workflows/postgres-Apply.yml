@@ -169,6 +169,8 @@ jobs:
 
       - name: Verify PostgreSQL SQL health
         shell: bash
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -euo pipefail
           kubectl exec --namespace "$K8S_NAMESPACE" postgres-0 -- \
